@@ -1,0 +1,48 @@
+{
+  "name": "vscode-print-md",
+  "displayName": "Print Markdown",
+  "description": "Right-click a Markdown file in the editor and print it using embedded Python engine.",
+  "version": "0.0.1",
+  "publisher": "your-name",
+  "icon": "icon.png",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onCommand:printMD.print"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "printMD.print",
+        "title": "Print Markdown"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "printMD.print",
+          "when": "editorLangId == markdown",
+          "group": "navigation"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "printMD.print",
+          "when": "webviewId == 'markdown.preview'",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "compile": "tsc -p ./",
+    "postinstall": "npm run build && node -e \"console.log('\\n✓ Extension compiled successfully!\\n\\n📦 Installing Python dependencies...\\n')\" && python -m pip install --quiet markdown weasyprint pygments pywin32 && node -e \"console.log('\\n✓ Python packages installed!\\n\\n🎉 Setup complete! Press F5 to run the extension.\\n')\""
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "@types/node": "^20.4.0",
+    "@types/vscode": "^1.80.0"
+  }
+}

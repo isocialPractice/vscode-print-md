@@ -28,21 +28,3 @@ const powNum = (num: number): void => {
 arrNum.forEach(powNum);
 // Example output: 1, 4, 9, 16, 25, 36, 49, 64, 81, 0
 ```
-
-### Example: Tuple Destructuring
-
-Deconstructing a tuple with geographic coordinates (28.43221, 30.34):
-
-```typescript
-const coord: [x: number, y: number] = [28.43221, 30.34];
-const [x, y] = coord;
-
-console.log(`${x}, ${y}`);
-// Output: "28.43221, 30.34"
-```
-
-### Notes
-
-- **Union Types**: Function parameters can accept multiple types using union syntax (e.g., `string | number`)
-- **Type Safety**: TypeScript ensures type consistency throughout your code
-

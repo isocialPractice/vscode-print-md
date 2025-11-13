@@ -182,6 +182,53 @@ def print_pdf_unix(pdf_path: str, printer_name: str | None = None) -> None:
   subprocess.run(cmd, check=True)
 
 
+def get_available_printers() -> list[str]:
+  """Get list of available printers on the system."""
+  printers = []
+  
+  if sys.platform.startswith('win'):
+    # Windows: use win32print if available, otherwise enumerate via wmic
+    if _have_pywin32:
+      try:
+        # EnumPrinters returns a list of tuples: (Flags, Description, Name, Comment)
+        printer_info = win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS)
+        printers = [info[2] for info in printer_info]  # info[2] is the printer name
+      except Exception as e:
+        print(f"Warning: Failed to enumerate printers via pywin32: {e}", file=sys.stderr)
+        # Fallback to wmic
+        try:
+          result = subprocess.run(['wmic', 'printer', 'get', 'name'], capture_output=True, text=True, shell=True)
+          if result.returncode == 0:
+            lines = result.stdout.strip().split('\n')
+            printers = [line.strip() for line in lines[1:] if line.strip()]
+        except Exception as e2:
+          print(f"Warning: Failed to enumerate printers via wmic: {e2}", file=sys.stderr)
+    else:
+      # No pywin32, try wmic
+      try:
+        result = subprocess.run(['wmic', 'printer', 'get', 'name'], capture_output=True, text=True, shell=True)
+        if result.returncode == 0:
+          lines = result.stdout.strip().split('\n')
+          printers = [line.strip() for line in lines[1:] if line.strip()]
+      except Exception as e:
+        print(f"Warning: Failed to enumerate printers: {e}", file=sys.stderr)
+  else:
+    # Unix/Linux/macOS: use lpstat
+    try:
+      result = subprocess.run(['lpstat', '-p'], capture_output=True, text=True)
+      if result.returncode == 0:
+        for line in result.stdout.strip().split('\n'):
+          if line.startswith('printer '):
+            # Format: "printer PrinterName is ..."
+            parts = line.split()
+            if len(parts) >= 2:
+              printers.append(parts[1])
+    except Exception as e:
+      print(f"Warning: Failed to enumerate printers: {e}", file=sys.stderr)
+  
+  return printers
+
+
 def open_html_in_browser(html_path: str) -> None:
   # last-resort: open the HTML in the default browser for manual printing
   try:
@@ -202,8 +249,16 @@ def main() -> int:
   parser.add_argument('--html', help="Path to pre-rendered HTML file (alternative to mdfile)")
   parser.add_argument('--pdf', help="Path where PDF should be saved")
   parser.add_argument('--printer', '-p', help="Printer name (optional)", default=None)
+  parser.add_argument('--list-printers', action='store_true', help="List available printers and exit")
   parser.add_argument('--wait-seconds', '-w', type=float, default=3.0, help="Seconds to wait after issuing print command before cleanup")
   args = parser.parse_args()
+
+  # Handle list-printers command
+  if args.list_printers:
+    printers = get_available_printers()
+    for printer in printers:
+      print(printer)
+    return 0
 
   # Determine if we're using pre-rendered HTML or markdown
   if args.html:

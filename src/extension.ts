@@ -6,8 +6,22 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 
+// Helper function to check if a printer is a PDF printer
+function isPdfPrinter(printerName: string): boolean {
+  const pdfPrinterNames = [
+    'adobe pdf',
+    'microsoft print to pdf',
+    'pdf',
+    'print to pdf'
+  ];
+  return pdfPrinterNames.some(name => printerName.toLowerCase().includes(name));
+}
+
 export function activate(context: vscode.ExtensionContext) {
   console.log('Print Markdown extension is active!');
+
+  // Variable to store the last used printer across extension sessions
+  let lastUsedPrinter: string | undefined = context.globalState.get('lastUsedPrinter');
 
   let disposable = vscode.commands.registerCommand('printMD.print', async () => {
     // Try to get the markdown file from active editor, visible editors, or all open documents
@@ -88,19 +102,128 @@ export function activate(context: vscode.ExtensionContext) {
         async message => {
           if (message.command === 'debug') {
             console.log('[Webview Debug]:', message.data);
+          } else if (message.command === 'getPrinters') {
+            // Get list of available printers from Python script
+            const pythonEngine = path.join(context.extensionPath, 'src', 'printMD.py');
+            
+            const command = `python "${pythonEngine}" --list-printers`;
+            const pyProc = spawn(command, [], { shell: true });
+
+            let printerOutput = '';
+            let errorOutput = '';
+
+            pyProc.stdout.on('data', (data) => {
+              printerOutput += data.toString();
+            });
+
+            pyProc.stderr.on('data', (data) => {
+              errorOutput += data.toString();
+            });
+
+            pyProc.on('close', (code) => {
+              if (code === 0) {
+                const printers = printerOutput.trim().split('\n').filter(p => p.trim());
+                panel.webview.postMessage({ command: 'printerList', printers: printers });
+              } else {
+                vscode.window.showErrorMessage(`Failed to get printer list: ${errorOutput}`);
+                panel.webview.postMessage({ command: 'printerList', printers: [] });
+              }
+            });
           } else if (message.command === 'print') {
+            const config = vscode.workspace.getConfiguration('vscode-print-md');
+            const printerSelectMode = config.get<string>('printer.select', 'default');
+            const selectedPrinter = message.data?.selectedPrinter;
+
+            // Determine which printer to use
+            let printerToUse: string | undefined;
+            
+            if (selectedPrinter) {
+              // User selected a printer in this session
+              printerToUse = selectedPrinter;
+              if (printerSelectMode === 'last-used') {
+                // Save for next time
+                lastUsedPrinter = selectedPrinter;
+                context.globalState.update('lastUsedPrinter', selectedPrinter);
+              }
+            } else if (printerSelectMode === 'last-used' && lastUsedPrinter) {
+              // Use the last used printer
+              printerToUse = lastUsedPrinter;
+            }
+            // If printerSelectMode is 'default' or no printer selected, printerToUse remains undefined (system default)
+
+            // Handle save-pdf mode OR if a PDF printer is selected
+            const isPdfMode = printerSelectMode === 'save-pdf' || (printerToUse && isPdfPrinter(printerToUse));
+            
+            if (isPdfMode) {
+              const defaultPath = path.join(
+                path.dirname(mdDocument.fileName),
+                path.basename(mdDocument.fileName, '.md') + '.pdf'
+              );
+              
+              const saveUri = await vscode.window.showSaveDialog({
+                defaultUri: vscode.Uri.file(defaultPath),
+                filters: {
+                  'PDF files': ['pdf']
+                },
+                title: 'Save Markdown as PDF'
+              });
+
+              if (!saveUri) {
+                vscode.window.showInformationMessage('Save cancelled.');
+                return;
+              }
+
+              vscode.window.showInformationMessage(`Saving ${path.basename(mdDocument.fileName)} as PDF...`);
+
+              // Convert HTML to PDF and save
+              const pythonEngine = path.join(context.extensionPath, 'src', 'printMD.py');
+
+              const command = `python "${pythonEngine}" --html "${htmlPath}" --pdf "${saveUri.fsPath}"`;
+              const pyProc = spawn(command, [], { shell: true });
+
+              let errorOutput = '';
+
+              pyProc.stdout.on('data', (data) => {
+                console.log(`stdout: ${data.toString()}`);
+              });
+
+              pyProc.stderr.on('data', (data) => {
+                errorOutput += data.toString();
+              });
+
+              pyProc.on('close', (code) => {
+                panel.dispose();
+                // Clean up temporary HTML file
+                setTimeout(() => {
+                  try {
+                    if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath);
+                  } catch (cleanupError) {
+                    console.error('Cleanup error:', cleanupError);
+                  }
+                }, 1000);
+                
+                if (code === 0) {
+                  vscode.window.showInformationMessage(`PDF saved successfully to ${path.basename(saveUri.fsPath)}`);
+                } else {
+                  vscode.window.showErrorMessage(`PDF save failed (exit code ${code})\n${errorOutput}`);
+                }
+              });
+              return;
+            }
+
+            // Regular printing to physical printer
             vscode.window.showInformationMessage(`Printing ${path.basename(mdDocument.fileName)}...`);
 
             // Convert HTML to PDF and print using Python script
             const pythonEngine = path.join(context.extensionPath, 'src', 'printMD.py');
 
-            const pyProc = spawn('python', [
-              `"${pythonEngine}"`,
-              '--html',
-              `"${htmlPath}"`,
-              '--pdf',
-              `"${pdfPath}"`
-            ], { shell: true });
+            // Build command with proper quoting
+            let command = `python "${pythonEngine}" --html "${htmlPath}" --pdf "${pdfPath}"`;
+            if (printerToUse) {
+              command += ` --printer "${printerToUse}"`;
+            }
+
+            const pyProc = spawn(command, [], { shell: true });
 
             let errorOutput = '';
 
@@ -449,6 +572,7 @@ function addPrintButton(html: string): string {
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     display: flex;
     gap: 10px;
+    align-items: center;
   }
 
   .print-toolbar button {
@@ -480,21 +604,274 @@ function addPrintButton(html: string): string {
     background: #eaeef2;
   }
 
+  .print-options-container {
+    position: relative;
+    margin-right: auto;
+  }
+
+  .print-options-btn {
+    padding: 8px 16px;
+    font-size: 14px;
+    background: #f6f8fa;
+    color: #24292f;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+
+  .print-options-btn:hover {
+    background: #eaeef2;
+  }
+
+  .print-options-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: white;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-width: 180px;
+    z-index: 10001;
+  }
+
+  .print-options-menu.show {
+    display: block;
+  }
+
+  .print-options-menu ul {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+  }
+
+  .print-options-menu li {
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+    font-size: 14px;
+  }
+
+  .print-options-menu li:hover {
+    background: #f6f8fa;
+  }
+
+  .printer-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 10002;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .printer-modal.show {
+    display: flex;
+  }
+
+  .printer-modal-content {
+    background: white;
+    border-radius: 6px;
+    padding: 20px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 70vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .printer-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #d0d7de;
+  }
+
+  .printer-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .printer-modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #57606a;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    line-height: 1;
+  }
+
+  .printer-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .printer-list li {
+    padding: 12px;
+    margin: 4px 0;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .printer-list li:hover {
+    background: #f6f8fa;
+    border-color: #0969da;
+  }
+
+  .printer-list li.selected {
+    background: #ddf4ff;
+    border-color: #0969da;
+  }
+
+  .printer-loading {
+    text-align: center;
+    padding: 20px;
+    color: #57606a;
+  }
+
   @media print {
     .print-toolbar {
+        display: none !important;
+    }
+    .printer-modal {
         display: none !important;
     }
   }
   </style>
   <div class="print-toolbar">
+    <div class="print-options-container">
+      <button class="print-options-btn" onclick="togglePrintOptions()">Print Options ▼</button>
+      <div class="print-options-menu" id="printOptionsMenu">
+        <ul>
+          <li onclick="openPrinterSelection()">Select Printer</li>
+        </ul>
+      </div>
+    </div>
     <button class="print-btn" onclick="sendMessage('print')">🖨️ Print</button>
     <button class="cancel-btn" onclick="sendMessage('cancel')">✖ Cancel</button>
   </div>
+
+  <div class="printer-modal" id="printerModal">
+    <div class="printer-modal-content">
+      <div class="printer-modal-header">
+        <h3>Select Printer</h3>
+        <button class="printer-modal-close" onclick="closePrinterModal()">×</button>
+      </div>
+      <div id="printerListContainer">
+        <div class="printer-loading">Loading printers...</div>
+      </div>
+    </div>
+  </div>
+
   <script>
   const vscode = acquireVsCodeApi();
-  function sendMessage(command) {
-    vscode.postMessage({ command: command });
+  let selectedPrinter = null;
+  let availablePrinters = [];
+
+  function sendMessage(command, data) {
+    if (command === 'print') {
+      // Include selected printer when printing
+      vscode.postMessage({ 
+        command: command, 
+        data: { selectedPrinter: selectedPrinter }
+      });
+    } else {
+      vscode.postMessage({ command: command, data: data });
+    }
   }
+
+  function togglePrintOptions() {
+    const menu = document.getElementById('printOptionsMenu');
+    menu.classList.toggle('show');
+  }
+
+  function openPrinterSelection() {
+    togglePrintOptions();
+    const modal = document.getElementById('printerModal');
+    modal.classList.add('show');
+    // Request printer list from extension
+    sendMessage('getPrinters');
+  }
+
+  function closePrinterModal() {
+    const modal = document.getElementById('printerModal');
+    modal.classList.remove('show');
+  }
+
+  function selectPrinter(printerName) {
+    selectedPrinter = printerName;
+    // Update UI to show selected printer
+    const items = document.querySelectorAll('.printer-list li');
+    items.forEach(item => {
+      if (item.textContent === printerName) {
+        item.classList.add('selected');
+      } else {
+        item.classList.remove('selected');
+      }
+    });
+    // Close modal after selection
+    setTimeout(() => closePrinterModal(), 300);
+    sendMessage('debug', { message: 'Selected printer: ' + printerName });
+  }
+
+  function displayPrinters(printers) {
+    const container = document.getElementById('printerListContainer');
+    if (!printers || printers.length === 0) {
+      container.innerHTML = '<div class="printer-loading">No printers found</div>';
+      return;
+    }
+
+    availablePrinters = printers;
+    const ul = document.createElement('ul');
+    ul.className = 'printer-list';
+
+    printers.forEach(printer => {
+      const li = document.createElement('li');
+      li.textContent = printer;
+      li.onclick = () => selectPrinter(printer);
+      if (printer === selectedPrinter) {
+        li.classList.add('selected');
+      }
+      ul.appendChild(li);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(ul);
+  }
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('printOptionsMenu');
+    const container = document.querySelector('.print-options-container');
+    if (menu && container && !container.contains(e.target)) {
+      menu.classList.remove('show');
+    }
+  });
+
+  // Listen for messages from extension
+  window.addEventListener('message', event => {
+    const message = event.data;
+    if (message.command === 'printerList') {
+      displayPrinters(message.printers);
+    }
+  });
   </script>
   `;
 

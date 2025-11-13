@@ -16,6 +16,22 @@
         "title": "Print Markdown"
       }
     ],
+    "configuration": {
+      "title": "Print Markdown",
+      "properties": {
+        "vscode-print-md.printer.select": {
+          "type": "string",
+          "default": "default",
+          "enum": ["default", "last-used", "save-pdf"],
+          "enumDescriptions": [
+            "Always use the system default printer",
+            "Remember and use the last selected printer",
+            "Always save as PDF file instead of printing"
+          ],
+          "description": "Printer selection behavior when printing markdown files"
+        }
+      }
+    },
     "menus": {
       "editor/context": [
         {

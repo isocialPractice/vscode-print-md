@@ -1,4 +1,4 @@
-# TypeScript Exercise
+# TypeScript Exercise ![icon](icon.png)
 
 ## Arrays and Tuples
 
@@ -28,3 +28,7 @@ const powNum = (num: number): void => {
 arrNum.forEach(powNum);
 // Example output: 1, 4, 9, 16, 25, 36, 49, 64, 81, 0
 ```
+
+## Check Color Mode
+
+- [TypeScript Deep Dive](https://basarat.gitbook.io/typescript/)

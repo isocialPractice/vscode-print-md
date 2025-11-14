@@ -1,0 +1,637 @@
+<!-- addPrintButton -->
+<!-- Embedded dropdown and buttons displayed at print preview. -->
+<style>
+  .print-toolbar {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    background: white;
+    padding: 12px 16px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .print-toolbar button {
+    padding: 8px 16px;
+    font-size: 14px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+
+  .print-toolbar button.print-btn {
+    background: #0969da;
+    color: white;
+  }
+
+  .print-toolbar button.print-btn:hover {
+    background: #0550ae;
+  }
+
+  .print-toolbar button.cancel-btn {
+    background: #f6f8fa;
+    color: #24292f;
+    border: 1px solid #d0d7de;
+  }
+
+  .print-toolbar button.cancel-btn:hover {
+    background: #eaeef2;
+  }
+
+  .print-options-container {
+    position: relative;
+    margin-right: auto;
+  }
+
+  .print-options-btn {
+    padding: 8px 16px;
+    font-size: 14px;
+    background: #f6f8fa;
+    color: #24292f;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+
+  .print-options-btn:hover {
+    background: #eaeef2;
+  }
+
+  .print-options-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: white;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-width: 180px;
+    z-index: 10001;
+  }
+
+  .print-options-menu.show {
+    display: block;
+  }
+
+  .print-options-menu ul {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+  }
+
+  .print-options-menu li {
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+    font-size: 14px;
+  }
+
+  .print-options-menu li:hover {
+    background: #f6f8fa;
+  }
+
+  .printer-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 10002;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .printer-modal.show {
+    display: flex;
+  }
+
+  .printer-modal-content {
+    background: white;
+    border-radius: 6px;
+    padding: 20px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 70vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .printer-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #d0d7de;
+  }
+
+  .printer-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .printer-modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #57606a;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    line-height: 1;
+  }
+
+  .printer-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .printer-list li {
+    padding: 12px;
+    margin: 4px 0;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .printer-list li:hover {
+    background: #f6f8fa;
+    border-color: #0969da;
+  }
+
+  .printer-list li.selected {
+    background: #ddf4ff;
+    border-color: #0969da;
+  }
+
+  .printer-loading {
+    text-align: center;
+    padding: 20px;
+    color: #57606a;
+  }
+
+  @media print {
+    .print-toolbar {
+        display: none !important;
+    }
+    .printer-modal {
+        display: none !important;
+    }
+  }
+  .printer-color-modes {
+    width: 100%;
+  }
+
+  .color-modes {
+    width: 100%;
+  }
+
+  ul.color-modes {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  li.mode {
+    padding: 12px 16px;
+    margin: 6px 0;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  li.mode:hover {
+    background: #f6f8fa;
+    border-color: #0969da;
+  }
+
+  li.mode.selected {
+    background: #ddf4ff;
+    border-color: #0969da;
+  }
+
+  li.mode.selected::after {
+    content: '✓';
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #0969da;
+    font-weight: bold;
+    font-size: 16px;
+  }
+
+  .page-range-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 10004;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .page-range-modal.show {
+    display: flex;
+  }
+
+  .page-range-content {
+    background: white;
+    border-radius: 6px;
+    padding: 20px;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .page-range-options {
+    padding: 8px 0;
+  }
+
+  .page-range-options ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .page-range-options li {
+    padding: 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .page-range-options li.divider {
+    border-top: 1px solid #d0d7de;
+    margin: 8px 0;
+    padding: 0;
+    height: 0;
+  }
+
+  .page-range-options input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+  }
+
+  .page-range-options label {
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  .page-range-options input[type="text"],
+  .page-range-options input[type="number"] {
+    padding: 6px 10px;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    font-size: 14px;
+    width: 80px;
+  }
+
+  .page-range-options input[type="text"] {
+    width: 180px;
+  }
+
+  .page-range-options input[type="text"]:disabled,
+  .page-range-options input[type="number"]:disabled {
+    background: #f6f8fa;
+    cursor: not-allowed;
+  }
+
+  .page-range-syntax {
+    font-size: 11px;
+    color: #57606a;
+    padding: 4px 0 4px 24px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+
+  .page-range-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .page-range-confirm {
+    background: #0969da;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+
+  .page-range-confirm:hover {
+    background: #0550ae;
+  }
+
+  .print-spinner {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #24292f;
+  }
+
+  .print-spinner.show {
+    display: flex;
+  }
+
+  .spinner-dot {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #0969da;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+</style>
+
+<div class="print-toolbar">
+  <div class="print-options-container">
+    <button class="print-options-btn" onclick="togglePrintOptions()">Print Options ▼</button>
+    <div class="print-options-menu" id="printOptionsMenu">
+      <ul>
+        <li onclick="openPrinterSelection()">Select Printer</li>
+        <li onclick="openPageRangeSelection()">Page Range</li>
+      </ul>
+    </div>
+  </div>
+  <button class="print-btn" onclick="sendMessage('print')">🖨️ Print</button>
+  <button class="cancel-btn" onclick="sendMessage('cancel')">✖ Cancel</button>
+  <div class="print-spinner" id="printSpinner">
+    <span class="spinner-dot"></span>
+    <span>Printing...</span>
+  </div>
+</div>
+
+<div class="printer-modal" id="printerModal">
+  <div class="printer-modal-content">
+    <div class="printer-modal-header">
+      <h3>Select Printer</h3>
+      <button class="printer-modal-close" onclick="closePrinterModal()">×</button>
+    </div>
+    <div id="printerListContainer">
+      <div class="printer-loading">Loading printers...</div>
+    </div>
+  </div>
+</div>
+
+<div class="page-range-modal" id="pageRangeModal">
+  <div class="printer-modal-content page-range-content">
+    <div class="printer-modal-header">
+      <h3>Page Range</h3>
+      <button class="printer-modal-close" onclick="closePageRangeModal()">×</button>
+    </div>
+    <div class="page-range-options">
+      <ul>
+        <li>
+          <input type="checkbox" id="allPages" name="pageRange" checked onchange="handlePageRangeChange('all')">
+          <label for="allPages">All Pages</label>
+        </li>
+        <li class="divider"></li>
+        <li>
+          <input type="checkbox" id="singlePage" name="pageRange" onchange="handlePageRangeChange('single')">
+          <label for="singlePage">Page:</label>
+          <input type="number" id="singlePageInput" min="1" placeholder="#" disabled>
+        </li>
+        <li>
+          <div class="page-range-syntax">Valid: 1-2 | 1-2,5,6,8-10 | 1,4,6,9</div>
+        </li>
+        <li>
+          <input type="checkbox" id="pageRange" name="pageRange" onchange="handlePageRangeChange('range')">
+          <label for="pageRange">Range:</label>
+          <input type="text" id="pageRangeInput" placeholder="e.g., 1-5,7,9-12" disabled>
+        </li>
+      </ul>
+    </div>
+    <div class="page-range-actions">
+      <button class="page-range-confirm" onclick="confirmPageRange()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const vscode = acquireVsCodeApi();
+  let selectedPrinter = null;
+  let availablePrinters = [];
+
+  function sendMessage(command, data) {
+    if (command === 'print') {
+      setPrintInProgress(true);
+      // Capture current page range values before printing
+      const singlePageInput = document.getElementById('singlePageInput');
+      const pageRangeInput = document.getElementById('pageRangeInput');
+      
+      if (pageRangeMode === 'single' && singlePageInput) {
+        pageRangeValue = singlePageInput.value.trim();
+      } else if (pageRangeMode === 'range' && pageRangeInput) {
+        pageRangeValue = pageRangeInput.value.trim();
+      } else if (pageRangeMode === 'all') {
+        pageRangeValue = '';
+      }
+      
+      // Include selected printer and page range when printing
+      vscode.postMessage({
+        command: command,
+        data: { 
+          selectedPrinter: selectedPrinter,
+          pageRange: { mode: pageRangeMode, value: pageRangeValue }
+        }
+      });
+    } else {
+      if (command === 'cancel') {
+        setPrintInProgress(false);
+      }
+      vscode.postMessage({ command: command, data: data });
+    }
+  }
+
+  function togglePrintOptions() {
+    const menu = document.getElementById('printOptionsMenu');
+    menu.classList.toggle('show');
+  }
+
+  function openPrinterSelection() {
+    togglePrintOptions();
+    const modal = document.getElementById('printerModal');
+    modal.classList.add('show');
+    // Request printer list from extension
+    sendMessage('getPrinters');
+  }
+
+  function closePrinterModal() {
+    const modal = document.getElementById('printerModal');
+    modal.classList.remove('show');
+  }
+
+  function selectPrinter(printerName) {
+    selectedPrinter = printerName;
+    // Update UI to show selected printer
+    const items = document.querySelectorAll('.printer-list li');
+    items.forEach(item => {
+      if (item.textContent === printerName) {
+        item.classList.add('selected');
+      } else {
+        item.classList.remove('selected');
+      }
+    });
+    // Close modal after selection
+    setTimeout(() => closePrinterModal(), 300);
+    sendMessage('debug', { message: 'Selected printer: ' + printerName });
+  }
+
+  function displayPrinters(printers) {
+    const container = document.getElementById('printerListContainer');
+    if (!printers || printers.length === 0) {
+      container.innerHTML = '<div class="printer-loading">No printers found</div>';
+      return;
+    }
+
+    availablePrinters = printers;
+    const ul = document.createElement('ul');
+    ul.className = 'printer-list';
+
+    printers.forEach(printer => {
+      const li = document.createElement('li');
+      li.textContent = printer;
+      li.onclick = () => selectPrinter(printer);
+      if (printer === selectedPrinter) {
+        li.classList.add('selected');
+      }
+      ul.appendChild(li);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(ul);
+  }
+
+  let pageRangeMode = 'all'; // 'all', 'single', or 'range'
+  let pageRangeValue = ''; // The page number or range string
+  const printButton = document.querySelector('.print-btn');
+  const printSpinner = document.getElementById('printSpinner');
+  const originalPrintLabel = printButton ? printButton.innerHTML : '';
+
+  function setPrintInProgress(isPrinting) {
+    if (printButton) {
+      printButton.disabled = isPrinting;
+      printButton.innerHTML = isPrinting ? 'Printing…' : originalPrintLabel;
+    }
+    if (printSpinner) {
+      printSpinner.classList.toggle('show', isPrinting);
+    }
+  }
+
+  function openPageRangeSelection() {
+    togglePrintOptions();
+    const modal = document.getElementById('pageRangeModal');
+    modal.classList.add('show');
+  }
+
+  function closePageRangeModal() {
+    const modal = document.getElementById('pageRangeModal');
+    modal.classList.remove('show');
+    // Save the page range settings
+    applyPageRange();
+  }
+
+  function confirmPageRange() {
+    applyPageRange();
+    closePageRangeModal();
+  }
+
+  function handlePageRangeChange(type) {
+    const allPages = document.getElementById('allPages');
+    const singlePage = document.getElementById('singlePage');
+    const pageRange = document.getElementById('pageRange');
+    const singlePageInput = document.getElementById('singlePageInput');
+    const pageRangeInput = document.getElementById('pageRangeInput');
+
+    // Uncheck all others
+    if (type === 'all') {
+      singlePage.checked = false;
+      pageRange.checked = false;
+      singlePageInput.disabled = true;
+      pageRangeInput.disabled = true;
+      pageRangeMode = 'all';
+    } else if (type === 'single') {
+      allPages.checked = false;
+      pageRange.checked = false;
+      singlePageInput.disabled = false;
+      pageRangeInput.disabled = true;
+      pageRangeMode = 'single';
+      // Focus the input
+      setTimeout(() => singlePageInput.focus(), 100);
+    } else if (type === 'range') {
+      allPages.checked = false;
+      singlePage.checked = false;
+      singlePageInput.disabled = true;
+      pageRangeInput.disabled = false;
+      pageRangeMode = 'range';
+      // Focus the input
+      setTimeout(() => pageRangeInput.focus(), 100);
+    }
+  }
+
+  function applyPageRange() {
+    const singlePageInput = document.getElementById('singlePageInput');
+    const pageRangeInput = document.getElementById('pageRangeInput');
+
+    if (pageRangeMode === 'single') {
+      pageRangeValue = singlePageInput.value.trim();
+    } else if (pageRangeMode === 'range') {
+      pageRangeValue = pageRangeInput.value.trim();
+    } else {
+      pageRangeValue = '';
+    }
+
+    // Notify extension
+    sendMessage('setPageRange', { mode: pageRangeMode, value: pageRangeValue });
+    sendMessage('debug', { message: `Page range: ${pageRangeMode} - ${pageRangeValue}` });
+  }
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('printOptionsMenu');
+    const container = document.querySelector('.print-options-container');
+    if (menu && container && !container.contains(e.target)) {
+      menu.classList.remove('show');
+    }
+  });
+
+  // Listen for messages from extension
+  window.addEventListener('message', event => {
+    const message = event.data;
+    if (message.command === 'printerList') {
+      displayPrinters(message.printers);
+    }
+  });
+</script>

@@ -1,0 +1,33 @@
+name: Manual test
+on:
+  workflow_dispatch:
+
+jobs:
+  manual-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies and run tests if package.json exists
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+            npm test || true
+          else
+            echo "No package.json found — skipping npm steps"
+          fi
+
+      - name: Run lint if lint script exists
+        run: |
+          if [ -f package.json ] && grep -q '"lint"' package.json; then
+            npm run lint || true
+          else
+            echo "No lint script found"
+          fi

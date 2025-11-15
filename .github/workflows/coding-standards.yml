@@ -1,0 +1,49 @@
+name: Coding Standards Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - master
+
+# Ensure workflow only runs checks - no write permissions
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  test-coding-standards:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Checkout the PR head commit (not merge commit)
+          ref: ${{ github.event.pull_request.head.sha }}
+          # Prevent any automated pushes
+          persist-credentials: false
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run coding standards tests
+        run: node test/coding-standards.test.js
+      
+      - name: Test results
+        if: success()
+        run: echo "✅ All coding standards tests passed!"
+      
+      - name: Test failures
+        if: failure()
+        run: |
+          echo "❌ Coding standards tests failed."
+          echo "Please review the test output above and fix any issues."
+          exit 1

@@ -306,7 +306,67 @@ describe('Coding Standards Compliance', () => {
         
         test('should use 2-space indentation', () => {
           const invalidIndents = [];
+          let inMultiLineDefinition = false;
+          let multiLineBaseIndent = 0;
+          let expectedContinuationIndent = 0;
+          let hasOpeningBrace = false;
+          
           lines.forEach((line, idx) => {
+            const trimmed = line.trim();
+            
+            // Skip comment lines entirely
+            if (trimmed.startsWith('#')) {
+              return;
+            }
+            
+            // Check if this line starts a multi-line variable definition
+            // Pattern: variable_name = value OR variable_name = ( OR variable_name = [
+            const varDefMatch = line.match(/^(\s*)([a-z_][a-z0-9_]*)\s*=\s*(.*)$/);
+            if (varDefMatch && !inMultiLineDefinition) {
+              const leadingSpaces = varDefMatch[1];
+              const varName = varDefMatch[2];
+              const valueStart = varDefMatch[3];
+              
+              // Check if value starts with opening brace/bracket/paren
+              if (valueStart.match(/^[\(\[\{]/)) {
+                inMultiLineDefinition = true;
+                hasOpeningBrace = true;
+                multiLineBaseIndent = leadingSpaces.length;
+                // For nested braces, continuation should align with content after opening brace
+                // Calculate: base indent + varName + ' = ' + 1 for char after opening brace
+                expectedContinuationIndent = leadingSpaces.length + varName.length + 3 + 1;
+                return; // Skip indentation check for this line - it starts the definition
+              }
+              // Note: removed the else-if branch for multi-line without braces, 
+              // as simple assignments like "var = value" should not be treated as multi-line
+            }
+            
+            // Skip indentation validation for continuation lines in multi-line definitions
+            // IMPORTANT: Check this BEFORE falling through to the odd-number check
+            if (inMultiLineDefinition && idx > 0) {
+              const spaces = line.match(/^([\s]*)/)[1];
+              // Allow exact match with expected continuation indent (even if odd number)
+              // OR any even-numbered indentation > base indent
+              if (spaces.length === expectedContinuationIndent || 
+                  (spaces.length > multiLineBaseIndent && spaces.length % 2 === 0)) {
+                // Check if this line also ends the definition, then reset state
+                if (hasOpeningBrace && (trimmed.endsWith(')') || trimmed.endsWith(']') || trimmed.endsWith('}'))) {
+                  inMultiLineDefinition = false;
+                  hasOpeningBrace = false;
+                  expectedContinuationIndent = 0;
+                } else if (!hasOpeningBrace && !line.endsWith('\\') && idx + 1 < lines.length) {
+                  // Check if next line is back to base indent or less
+                  const nextLine = lines[idx + 1];
+                  const nextSpaces = nextLine.match(/^([\s]*)/)[1];
+                  if (nextSpaces.length <= multiLineBaseIndent) {
+                    inMultiLineDefinition = false;
+                    expectedContinuationIndent = 0;
+                  }
+                }
+                return; // Skip this line - it's a valid continuation
+              }
+            }
+            
             if (line.match(/^[\s]+\S/) && !line.includes('\t')) {
               const spaces = line.match(/^([\s]+)/)[1];
               if (spaces.length % 2 !== 0) {

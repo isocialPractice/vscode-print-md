@@ -40,6 +40,9 @@ from pathlib import Path
 import html
 import importlib
 
+# Debug variables - DO NOT DELETE
+debug_print_md = 0 # 0 (default) 1 does not print
+
 # Try optional packages
 _have_weasy = True
 _have_pywin32 = True
@@ -78,32 +81,6 @@ try:
 except Exception:
   _have_pywin32 = False
 
-# A compact, print-friendly CSS that resembles GitHub markdown style.
-PRINT_CSS = r"""
-@page { size: Letter; margin: 1in; }
-body {
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  font-size: 11pt;
-  color: #222;
-  line-height: 1.45;
-  background: white;
-  padding: 0;
-  margin: 0;
-}
-article { max-width: 7.5in; margin: 0 auto; padding: 0; }
-h1 { font-size: 20pt; margin-top: 0.6em; margin-bottom: 0.3em; font-weight: 700; }
-h2 { font-size: 16pt; margin-top: 0.6em; margin-bottom: 0.3em; font-weight: 700; }
-h3 { font-size: 13pt; margin-top: 0.5em; margin-bottom: 0.2em; font-weight: 700; }
-pre, code { font-family: Consolas, "Courier New", monospace; background: #f6f8fa; border: 1px solid #e1e4e8; padding: 0.2em 0.4em; border-radius: 3px; }
-pre { padding: 0.6em; overflow: auto; }
-table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
-th, td { border: 1px solid #dfe2e5; padding: 0.4em; text-align: left; vertical-align: top; }
-a { color: #0366d6; text-decoration: none; }
-a[href]:after { content: " (" attr(href) ")"; font-size: 85%; color: #444; }
-ul, ol { margin: 0.4em 0 0.8em 1.2em; }
-h1, h2, h3, pre, table { page-break-inside: avoid; }
-"""
-
 MARKDOWN_EXTS = [
   'fenced_code',
   'codehilite',
@@ -117,22 +94,19 @@ MARKDOWN_EXTS = [
 def md_to_html(md_text: str, title: str = "Document") -> str:
   md = markdown.Markdown(extensions=MARKDOWN_EXTS, output_format='html5')
   body = md.convert(md_text)
-  html_doc = f"""<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=8.5in, initial-scale=1.0">
-<title>{html.escape(title)}</title>
-<style>
-{PRINT_CSS}
-</style>
-</head>
-<body>
-<article class="markdown-body">
-{body}
-</article>
-</body>
-</html>"""
+  
+  # Get the path to the HTML template
+  script_dir = Path(__file__).parent
+  template_path = script_dir / 'views' / 'mdToHtml.htm'
+  
+  # Read the template file
+  with open(template_path, 'r', encoding='utf-8') as f:
+    html_doc = f.read()
+  
+  # Replace placeholders
+  html_doc = html_doc.replace('markdown_body', body)
+  html_doc = html_doc.replace('html_escape_title', html.escape(title))
+  
   return html_doc
 
 def render_pdf(html_str: str, out_pdf: str) -> None:
@@ -141,84 +115,99 @@ def render_pdf(html_str: str, out_pdf: str) -> None:
   # Ensure Letter page size with CSS override
   HTML(string=html_str).write_pdf(out_pdf, stylesheets=[CSS(string='@page { size: Letter; margin: 1in }')])
 
+def print_or_save_pdf(os_name: str, pdf_path: str, command_func) -> None:
+  """
+  Print or save PDF
+  
+  This function prints to office printer or skips printing if debug mode is disabled.
+  In debug mode, it just prints the command instead of executing it.
+  """
+  global debug_print_md
+  
+  if debug_print_md == 0:
+    # Normal mode - execute the command
+    # Check if this is a temp file (will be deleted after printing)
+    # Temp files include: system temp dirs, printmd_ folders, VS Code globalStorage, and print-output-* files
+    is_temp = (
+      'Temp' in pdf_path or 
+      'temp' in pdf_path or 
+      'printmd_' in pdf_path or
+      'globalStorage' in pdf_path or
+      'print-output-' in pdf_path or
+      'print-preview-' in pdf_path
+    )
+    
+    if is_temp:
+      # Execute the print command for temp files
+      if callable(command_func):
+        command_func()
+    else:
+      # This is a saved PDF, just inform the user
+      print(f"PDF Saved: {pdf_path}")
+  else:
+    # Debug mode - just print what would be executed
+    print(f"{os_name} - would execute print command for: {pdf_path}")
+
 def print_pdf_windows(pdf_path: str, printer_name: str | None = None) -> None:
   """
-  Print PDF on Windows. Adobe Reader may have 'Print in Grayscale' enabled by default.
-  To fix: Open Adobe Reader > Edit > Preferences > Page Display > uncheck 'Use Grayscale'
+  Print PDF on Windows. 
   
-  This function tries multiple methods to print with color preservation.
+  This function calls the print_or_save_pdf functions specifying the os is Windows
   """
-  
-  # Method 1: Try SumatraPDF first - it's lightweight and respects color better than Adobe
-  sumatra_paths = [
-    r"C:\Program Files\SumatraPDF\SumatraPDF.exe",
-    r"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
-  ]
-  
-  for sumatra_path in sumatra_paths:
-    if os.path.exists(sumatra_path):
-      try:
-        target_printer = printer_name
-        if not target_printer and _have_pywin32:
-          try:
-            target_printer = win32print.GetDefaultPrinter()
-          except Exception:
-            pass
-        
-        print(f"Printing via SumatraPDF to printer: {target_printer or 'default'}")
-        
-        # SumatraPDF command: -print-to "printer name" file.pdf (or -print-to-default)
-        if target_printer:
-          subprocess.run([sumatra_path, '-print-to', target_printer, pdf_path], timeout=15, check=True)
-        else:
-          subprocess.run([sumatra_path, '-print-to-default', pdf_path], timeout=15, check=True)
-        
-        print("SumatraPDF print command completed")
-        return
-      except subprocess.TimeoutExpired:
-        print("SumatraPDF print timed out (but may have succeeded)")
-        return
-      except FileNotFoundError:
-        print(f"SumatraPDF not found at {sumatra_path}")
-        break
-      except Exception as e:
-        print(f"SumatraPDF printing failed: {e}")
-        break
-  
-  # Method 2: Fallback to ShellExecute
-  # NOTE: This may invoke Adobe Reader which might have "Print in Grayscale" enabled.
-  # User should check: Adobe Reader > Edit > Preferences > Page Display > uncheck "Use Grayscale"
-  print("WARNING: Using ShellExecute (Adobe Reader). If prints are grayscale:")
-  print("  Fix: Adobe Reader > Edit > Preferences > Page Display > uncheck 'Use Grayscale'")
-  print("  Or install SumatraPDF for better color handling")
-  
+
   if _have_pywin32:
     try:
       print("Printing via win32api.ShellExecute(..., 'print') ...")
-      win32api.ShellExecute(0, "print", pdf_path, None, ".", 0)
+      print_or_save_pdf(
+        "windows",
+        pdf_path,
+        lambda: win32api.ShellExecute(0, "print", pdf_path, None, ".", 0)
+      )
       return
     except Exception as e:
       print("pywin32 ShellExecute failed:", e)
   # os.startfile fallback
   try:
     print("Printing via os.startfile(..., 'print') ...")
-    os.startfile(pdf_path, "print")
+    print_or_save_pdf(
+      "windows",
+      pdf_path,
+      lambda: os.startfile(pdf_path, "print")
+    )
     return
   except Exception as e:
     print("os.startfile print failed:", e)
   # last-ditch attempt using rundll32 (Windows)
   try:
     print("Attempting rundll32 ShellExec_RunDLL fallback ...")
-    subprocess.run(['rundll32', 'shell32.dll,ShellExec_RunDLL', pdf_path, 'print'], shell=True)
+    print_or_save_pdf(
+      "windows",
+      pdf_path,
+      lambda: subprocess.run(['rundll32', 'shell32.dll,ShellExec_RunDLL', pdf_path, 'print'], shell=True)
+    )
   except Exception as e:
     print("Final Windows fallback failed:", e)
     raise RuntimeError("Unable to send to printer on Windows")
 
 def print_pdf_unix(pdf_path: str, printer_name: str | None = None) -> None:
+  """
+  Print PDF on UNIX. 
+  
+  This function calls the print_or_save_pdf functions specifying the os is UNIX.
+  """
+
   # Use lp or lpr if present
   lp_cmd = shutil.which('lp') or shutil.which('lpr')
   if not lp_cmd:
-    raise RuntimeError("Neither 'lp' nor 'lpr' was found on PATH")
+    # No printer command available, open in browser as fallback
+    print("Neither 'lp' nor 'lpr' found. Opening PDF in default viewer for manual printing...")
+    if sys.platform == 'darwin':
+      subprocess.run(['open', pdf_path])
+    else:
+      # Linux - try xdg-open
+      subprocess.run(['xdg-open', pdf_path])
+    return
+  
   cmd = [lp_cmd]
   if printer_name:
     # lp uses -d, lpr uses -P
@@ -228,7 +217,31 @@ def print_pdf_unix(pdf_path: str, printer_name: str | None = None) -> None:
       cmd += ['-P', printer_name]
   cmd += [pdf_path]
   print("Running:", " ".join(cmd))
-  subprocess.run(cmd, check=True)
+  
+  try:
+    print_or_save_pdf(
+      "unix",
+      pdf_path,
+      lambda: subprocess.run(cmd, check=True)
+    )
+  except subprocess.CalledProcessError as e:
+    # Print command failed, try opening in viewer
+    print(f"Print command failed: {e}")
+    print("Falling back to opening PDF in default viewer for manual printing...")
+    if sys.platform == 'darwin':
+      subprocess.run(['open', pdf_path])
+    else:
+      # Linux - try xdg-open
+      subprocess.run(['xdg-open', pdf_path])
+  except Exception as e:
+    # Any other error, try opening in viewer
+    print(f"Error during print: {e}")
+    print("Falling back to opening PDF in default viewer for manual printing...")
+    if sys.platform == 'darwin':
+      subprocess.run(['open', pdf_path])
+    else:
+      # Linux - try xdg-open
+      subprocess.run(['xdg-open', pdf_path])
 
 def get_available_printers() -> list[str]:
   """Get list of available printers on the system."""
@@ -457,6 +470,7 @@ def main() -> int:
     # Send to printer
     try:
       print("Sending to printer...")
+      print(f"Platform: {sys.platform}")
       
       # Parse page range if specified
       page_slices = parse_page_range(args.pages) if args.pages else []
@@ -472,8 +486,10 @@ def main() -> int:
           page_slices = []
       
       if sys.platform.startswith('win'):
+        print("Using Windows print method...")
         print_pdf_windows(pdf_to_print, args.printer)
       else:
+        print("Using Unix/macOS print method...")
         print_pdf_unix(pdf_to_print, args.printer)
       # Give the system some time to queue the job before we remove the file
       time.sleep(max(1.0, float(args.wait_seconds)))

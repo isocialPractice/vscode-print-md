@@ -4,7 +4,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
+import { cleanTempPrintFolder } from './utils/cleanTemp';
 
 // Global types.
 type vsExt = vscode.ExtensionContext
@@ -13,6 +14,24 @@ type vsExt = vscode.ExtensionContext
 var extContext: vsExt; // defined at activate
 
 // ************************************* SUPPORT FUNCTIONS *************************************
+// Get the correct Python command for the current platform
+function getPythonCommand(): string {
+  const isWindows = process.platform === 'win32';
+  
+  if (isWindows) {
+    // On Windows, try 'python' first
+    try {
+      execSync('python --version', { stdio: 'ignore' });
+      return 'python';
+    } catch (e) {
+      return 'python3';
+    }
+  } else {
+    // On macOS/Linux, use 'python3'
+    return 'python3';
+  }
+}
+
 // Generate path to extension views.
 function getView(viewFile: string): string {
   return path.join(extContext.extensionPath, 'src/views', viewFile);
@@ -32,6 +51,18 @@ function isPdfPrinter(printerName: string): boolean {
 export function activate(context: vscode.ExtensionContext) {
   console.log('Print Markdown extension is active!');
   extContext = context;
+  
+  // Check if Python is available
+  const pythonCmd = getPythonCommand();
+  try {
+    execSync(`${pythonCmd} --version`, { stdio: 'ignore' });
+  } catch (error) {
+    vscode.window.showWarningMessage(
+      `Python not found. The Print Markdown extension requires Python 3.x to be installed. ` +
+      `Please install Python and required packages (markdown, weasyprint, pygments).`
+    );
+  }
+  
   // Variable to store the last used printer across extension sessions
   let lastUsedPrinter: string | undefined = context.globalState.get('lastUsedPrinter');
   let pageRangeSettings = { mode: 'all', value: '' }; // Default to all pages
@@ -90,6 +121,9 @@ export function activate(context: vscode.ExtensionContext) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
+      // Schedule cleanup of old temp folders (runs after 20 minutes)
+      cleanTempPrintFolder(tempDir);
+
       const timestamp = Date.now();
       const htmlPath = path.join(tempDir, `print-preview-${timestamp}.html`);
       const pdfPath = path.join(tempDir, `print-output-${timestamp}.pdf`);
@@ -118,8 +152,9 @@ export function activate(context: vscode.ExtensionContext) {
           } else if (message.command === 'getPrinters') {
             // Get list of available printers from Python script
             const pythonEngine = path.join(context.extensionPath, 'src', 'printMD.py');
+            const pythonCmd = getPythonCommand();
             
-            const command = `python "${pythonEngine}" --list-printers`;
+            const command = `${pythonCmd} "${pythonEngine}" --list-printers`;
             const pyProc = spawn(command, [], { shell: true });
 
             let printerOutput = '';
@@ -199,8 +234,9 @@ export function activate(context: vscode.ExtensionContext) {
 
               // Convert HTML to PDF and save
               const pythonEngine = path.join(context.extensionPath, 'src', 'printMD.py');
+              const pythonCmd = getPythonCommand();
 
-              const command = `python "${pythonEngine}" --html "${htmlPath}" --pdf "${saveUri.fsPath}"`;
+              const command = `${pythonCmd} "${pythonEngine}" --html "${htmlPath}" --pdf "${saveUri.fsPath}"`;
               const pyProc = spawn(command, [], { shell: true });
 
               let errorOutput = '';
@@ -238,9 +274,10 @@ export function activate(context: vscode.ExtensionContext) {
 
             // Convert HTML to PDF and print using Python script
             const pythonEngine = path.join(context.extensionPath, 'src', 'printMD.py');
+            const pythonCmd = getPythonCommand();
 
             // Build command with proper quoting
-            let command = `python "${pythonEngine}" --html "${htmlPath}" --pdf "${pdfPath}"`;
+            let command = `${pythonCmd} "${pythonEngine}" --html "${htmlPath}" --pdf "${pdfPath}"`;
             if (printerToUse) {
               command += ` --printer "${printerToUse}"`;
             }

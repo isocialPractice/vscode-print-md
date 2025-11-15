@@ -54,7 +54,8 @@
     "build": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "compile": "tsc -p ./",
-    "postinstall": "npm run build && node -e \"console.log('\\n✓ Extension compiled successfully!\\n\\n📦 Installing Python dependencies...\\n')\" && python -m pip install --quiet markdown weasyprint pygments pywin32 && node -e \"console.log('\\n✓ Python packages installed!\\n\\n🎉 Setup complete! Press F5 to run the extension.\\n')\""
+    "install:python": "node scripts/install-python-deps.js",
+    "postinstall": "npm run build && node -e \"console.log('\\n✓ Extension compiled successfully!\\n')\" && npm run install:python && node -e \"console.log('\\n🎉 Setup complete! Press F5 to run the extension.\\n')\""
   },
   "devDependencies": {
     "typescript": "^5.2.2",

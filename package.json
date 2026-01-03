@@ -3,12 +3,21 @@
   "displayName": "Print Markdown",
   "description": "Right-click a Markdown file in the editor and print it using embedded Python engine.",
   "version": "0.0.1",
-  "publisher": "your-name",
+  "publisher": "isocialPractice",
   "icon": "icon.png",
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Other"],
   "activationEvents": ["onCommand:printMD.print"],
   "main": "./out/extension.js",
+  "files": [
+    "out/**",
+    "src/views/**/*.htm",
+    "src/printMD.py"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "hhttps://github.com/isocialPractice/vscode-print-md"
+  },
   "contributes": {
     "commands": [
       {

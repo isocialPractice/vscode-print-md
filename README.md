@@ -8,6 +8,7 @@ Print your Markdown files directly to any printer with a beautiful preview — n
 - 👀 **Live Preview** before printing with accurate page breaks
 - 📄 **Letter-sized pages** (US Letter) with professional formatting
 - 📑 **Page Range Selection** — print specific pages (e.g., 1-3, 5, 7-9)
+- 🖼️ **Image Support** — embedded images (relative and absolute paths) render in both preview and print
 - 🎨 **GitHub-style rendering** matching VS Code's markdown preview
 - 🖱️ **Right-click anywhere** — works in editor and preview pane
 - 💾 **Save as PDF** option instead of printing
@@ -179,9 +180,10 @@ vscode-print-md/
 
 1. Extension uses VS Code's native `markdown.api.render` to convert markdown to HTML
 2. Applies print-friendly CSS styling
-3. Shows preview in webview with page breaks
-4. On confirmation, Python script converts HTML → PDF using WeasyPrint
-5. PDF sent to system printer (platform-specific handling)
+3. Resolves relative image paths so images display correctly in preview and print
+4. Shows preview in webview with page breaks
+5. On confirmation, Python script converts HTML → PDF using WeasyPrint (with `base_url` for image resolution)
+6. PDF sent to system printer (platform-specific handling)
 
 ## Requirements
 

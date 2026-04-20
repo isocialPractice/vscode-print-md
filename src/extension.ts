@@ -98,10 +98,12 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
 
+    const mdFileDir = path.dirname(mdDocument.fileName);
+
     try {
       vscode.window.showInformationMessage(`Rendering ${path.basename(mdDocument.fileName)}...`);
 
-      // Use VS Code's built-in markdown rendering
+      // Use VS Code's built-in markdown rendering (with original relative paths)
       const html = await vscode.commands.executeCommand<string>(
         'markdown.api.render',
         mdDocument.getText()
@@ -112,8 +114,11 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
+      // Embed images as base64 data URIs in the rendered HTML
+      const htmlWithImages = embedImagesInHtml(html, mdFileDir);
+
       // Create a complete HTML document with print-friendly styling
-      const fullHtml = createPrintableHtml(html, path.basename(mdDocument.fileName));
+      const fullHtml = createPrintableHtml(htmlWithImages, path.basename(mdDocument.fileName));
 
       // Save HTML to temp file with unique timestamp to avoid conflicts
       const tempDir = context.globalStorageUri.fsPath;
@@ -129,6 +134,11 @@ export function activate(context: vscode.ExtensionContext) {
       const pdfPath = path.join(tempDir, `print-output-${timestamp}.pdf`);
 
       fs.writeFileSync(htmlPath, fullHtml, 'utf-8');
+
+      // Save debug HTML to verify images (open this file in a browser to test)
+      const debugHtmlPath = path.join(tempDir, `debug-preview-${timestamp}.html`);
+      fs.writeFileSync(debugHtmlPath, fullHtml, 'utf-8');
+      console.log(`[PrintMD] Debug HTML saved to: ${debugHtmlPath}`);
 
       // Show preview in webview
       const panel = vscode.window.createWebviewPanel(
@@ -236,7 +246,7 @@ export function activate(context: vscode.ExtensionContext) {
               const pythonEngine = path.join(context.extensionPath, 'src', 'printMD.py');
               const pythonCmd = getPythonCommand();
 
-              const command = `${pythonCmd} "${pythonEngine}" --html "${htmlPath}" --pdf "${saveUri.fsPath}"`;
+              const command = `${pythonCmd} "${pythonEngine}" --html "${htmlPath}" --pdf "${saveUri.fsPath}" --base-url "${mdFileDir}"`;
               const pyProc = spawn(command, [], { shell: true });
 
               let errorOutput = '';
@@ -277,7 +287,7 @@ export function activate(context: vscode.ExtensionContext) {
             const pythonCmd = getPythonCommand();
 
             // Build command with proper quoting
-            let command = `${pythonCmd} "${pythonEngine}" --html "${htmlPath}" --pdf "${pdfPath}"`;
+            let command = `${pythonCmd} "${pythonEngine}" --html "${htmlPath}" --pdf "${pdfPath}" --base-url "${mdFileDir}"`;
             if (printerToUse) {
               command += ` --printer "${printerToUse}"`;
             }
@@ -363,6 +373,58 @@ function addPrintButton(html: string): string {
   const toolbar = fs.readFileSync(getView('addPrintButton.htm'), 'utf-8');
   // Insert toolbar right after <body> tag
   return html.replace('<body>', '<body>' + toolbar);
+}
+
+function embedImagesInHtml(html: string, baseDir: string): string {
+  // Replace relative image src attributes in rendered HTML with base64 data URIs
+  const mimeTypes: Record<string, string> = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.png': 'image/png', '.gif': 'image/gif',
+    '.svg': 'image/svg+xml', '.webp': 'image/webp',
+    '.bmp': 'image/bmp', '.ico': 'image/x-icon'
+  };
+
+  let embedCount = 0;
+
+  const result = html.replace(/<img\b([^>]*)>/gi, (fullTag, attrs) => {
+    // Extract src attribute value
+    const srcMatch = attrs.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    if (!srcMatch) return fullTag;
+
+    const src = srcMatch[1] ?? srcMatch[2];
+    if (!src || /^(data:|https?:|blob:)/i.test(src)) return fullTag;
+
+    try {
+      let decodedSrc: string;
+      try { decodedSrc = decodeURIComponent(src); } catch { decodedSrc = src; }
+
+      const absolutePath = path.isAbsolute(decodedSrc)
+        ? decodedSrc
+        : path.resolve(baseDir, decodedSrc);
+
+      if (!fs.existsSync(absolutePath)) {
+        console.log(`[PrintMD] Image not found: ${absolutePath}`);
+        return fullTag;
+      }
+
+      const ext = path.extname(absolutePath).toLowerCase();
+      const mime = mimeTypes[ext] || 'application/octet-stream';
+      const base64 = fs.readFileSync(absolutePath).toString('base64');
+      const dataUri = `data:${mime};base64,${base64}`;
+
+      // Replace src value in the original attributes string
+      const newAttrs = attrs.replace(/\bsrc\s*=\s*(?:"[^"]*"|'[^']*')/i, `src="${dataUri}"`);
+      embedCount++;
+      console.log(`[PrintMD] Embedded image ${embedCount}: ${src} (${Math.round(base64.length / 1024)}KB)`);
+      return `<img${newAttrs}>`;
+    } catch (err) {
+      console.error(`[PrintMD] Failed to embed image ${src}:`, err);
+      return fullTag;
+    }
+  });
+
+  console.log(`[PrintMD] Total images embedded: ${embedCount}`);
+  return result;
 }
 
 export function deactivate() {}

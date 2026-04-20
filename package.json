@@ -59,12 +59,12 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run build",
-    "build": "tsc -p ./",
+    "vscode:prepublish": "npm run compile",
+    "build": "vsce package",
     "watch": "tsc -watch -p ./",
     "compile": "tsc -p ./",
     "install:python": "node scripts/install-python-deps.js",
-    "postinstall": "npm run build && node -e \"console.log('\\n✓ Extension compiled successfully!\\n')\" && npm run install:python && node -e \"console.log('\\n🎉 Setup complete! Press F5 to run the extension.\\n')\""
+    "postinstall": "npm run compile && node -e \"console.log('\\n✓ Extension compiled successfully!\\n')\" && npm run install:python && node -e \"console.log('\\n🎉 Setup complete! Press F5 to run the extension.\\n')\""
   },
   "devDependencies": {
     "typescript": "^5.2.2",

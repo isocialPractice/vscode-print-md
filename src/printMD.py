@@ -109,11 +109,11 @@ def md_to_html(md_text: str, title: str = "Document") -> str:
   
   return html_doc
 
-def render_pdf(html_str: str, out_pdf: str) -> None:
+def render_pdf(html_str: str, out_pdf: str, base_url: str | None = None) -> None:
   if not _have_weasy:
     raise RuntimeError("WeasyPrint not available")
-  # Ensure Letter page size with CSS override
-  HTML(string=html_str).write_pdf(out_pdf, stylesheets=[CSS(string='@page { size: Letter; margin: 1in }')])
+  # Ensure Letter page size with CSS override; base_url resolves relative resources (images, etc.)
+  HTML(string=html_str, base_url=base_url).write_pdf(out_pdf, stylesheets=[CSS(string='@page { size: Letter; margin: 1in }')])
 
 def print_or_save_pdf(os_name: str, pdf_path: str, command_func) -> None:
   """
@@ -405,6 +405,7 @@ def main() -> int:
   parser.add_argument('--printer', '-p', help="Printer name (optional)", default=None)
   parser.add_argument('--pages', help="Page range: single page '3' or range '1-5,7,9-12' (optional)", default=None)
   parser.add_argument('--list-printers', action='store_true', help="List available printers and exit")
+  parser.add_argument('--base-url', help="Base directory for resolving relative resources like images (optional)", default=None)
   parser.add_argument('--wait-seconds', '-w', type=float, default=3.0, help="Seconds to wait after issuing print command before cleanup")
   args = parser.parse_args()
 
@@ -437,6 +438,13 @@ def main() -> int:
     print("ERROR: Either mdfile or --html must be provided")
     return 2
 
+  # Determine base_url for resolving relative resources (images, etc.)
+  base_url = args.base_url
+  if not base_url and args.html:
+    base_url = str(Path(args.html).expanduser().resolve().parent)
+  elif not base_url and args.mdfile:
+    base_url = str(Path(args.mdfile).expanduser().resolve().parent)
+
   tmpdir = Path(tempfile.mkdtemp(prefix="printmd_"))
   try:
     # Use provided PDF path or create temp one
@@ -452,7 +460,7 @@ def main() -> int:
     if _have_weasy:
       try:
         print("Rendering PDF (Letter) using WeasyPrint...")
-        render_pdf(html_doc, pdf_path)
+        render_pdf(html_doc, pdf_path, base_url=base_url)
         print("PDF saved to:", pdf_path)
       except Exception as e:
         print("WeasyPrint rendering failed:", e)
